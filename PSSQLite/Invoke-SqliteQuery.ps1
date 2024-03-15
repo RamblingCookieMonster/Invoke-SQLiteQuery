@@ -538,7 +538,9 @@
                 }
                 'SingleValue'
                 {
-                    $ds.Tables[0] | Select-Object -ExpandProperty $ds.Tables[0].Columns[0].ColumnName
+                    if($ds.Tables.Count -gt 0 -and $ds.Tables[0].Columns.Count -gt 0){
+                        $ds.Tables[0] | Select-Object -ExpandProperty $ds.Tables[0].Columns[0].ColumnName
+                    }
                 }
             }
         }
