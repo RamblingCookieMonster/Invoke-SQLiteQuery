@@ -1,5 +1,5 @@
 ﻿function Invoke-SQLiteBulkCopy {
-<#
+    <#
 .SYNOPSIS
     Use a SQLite transaction to quickly insert data
 
@@ -79,55 +79,47 @@
     SQL
 #>
     [cmdletBinding( DefaultParameterSetName = 'Datasource',
-                    SupportsShouldProcess = $true,
-                    ConfirmImpact = 'High' )]
+        SupportsShouldProcess = $true,
+        ConfirmImpact = 'High' )]
     param(
         [parameter( Position = 0,
-                    Mandatory = $true,
-                    ValueFromPipeline = $false,
-                    ValueFromPipelineByPropertyName= $false)]
+            Mandatory = $true,
+            ValueFromPipeline = $false,
+            ValueFromPipelineByPropertyName = $false)]
         [System.Data.DataTable]
         $DataTable,
 
-        [Parameter( ParameterSetName='Datasource',
-                    Position=1,
-                    Mandatory=$true,
-                    ValueFromRemainingArguments=$false,
-                    HelpMessage='SQLite Data Source required...' )]
-        [Alias('Path','File','FullName','Database')]
-        [validatescript({
-            #This should match memory, or the parent path should exist
-            if ( $_ -match ":MEMORY:" -or (Test-Path $_) ) {
-                $True
-            }
-            else {
-                Throw "Invalid datasource '$_'.`nThis must match :MEMORY:, or must exist"
-            }
-        })]
+        [Parameter( ParameterSetName = 'Datasource',
+            Position = 1,
+            Mandatory = $true,
+            ValueFromRemainingArguments = $false,
+            HelpMessage = 'SQLite Data Source required...' )]
+        [Alias('Path', 'File', 'FullName', 'Database')]
+
         [string]
         $DataSource,
 
         [Parameter( ParameterSetName = 'Connection',
-                    Position=1,
-                    Mandatory=$true,
-                    ValueFromPipeline=$false,
-                    ValueFromPipelineByPropertyName=$true,
-                    ValueFromRemainingArguments=$false )]
+            Position = 1,
+            Mandatory = $true,
+            ValueFromPipeline = $false,
+            ValueFromPipelineByPropertyName = $true,
+            ValueFromRemainingArguments = $false )]
         [Alias( 'Connection', 'Conn' )]
         [System.Data.SQLite.SQLiteConnection]
         $SQLiteConnection,
 
-        [parameter( Position=2,
-                    Mandatory = $true)]
+        [parameter( Position = 2,
+            Mandatory = $true)]
         [string]
         $Table,
 
-        [Parameter( Position=3,
-                     Mandatory=$false,
-                     ValueFromPipeline=$false,
-                     ValueFromPipelineByPropertyName=$false,
-                     ValueFromRemainingArguments=$false)]
-        [ValidateSet("Rollback","Abort","Fail","Ignore","Replace")]
+        [Parameter( Position = 3,
+            Mandatory = $false,
+            ValueFromPipeline = $false,
+            ValueFromPipelineByPropertyName = $false,
+            ValueFromRemainingArguments = $false)]
+        [ValidateSet("Rollback", "Abort", "Fail", "Ignore", "Replace")]
         [string]
         $ConflictClause,
 
@@ -138,19 +130,18 @@
         $Force,
 
         [Int32]
-        $QueryTimeout = 600
+        $QueryTimeout = 600,
+        $primaryKey = ''
 
     )
 
     Write-Verbose "Running Invoke-SQLiteBulkCopy with ParameterSet '$($PSCmdlet.ParameterSetName)'."
 
-    Function CleanUp
-    {
+    Function CleanUp {
         [cmdletbinding()]
         param($conn, $com, $BoundParams)
         #Only dispose of the connection if we created it
-        if($BoundParams.Keys -notcontains 'SQLiteConnection')
-        {
+        if ($BoundParams.Keys -notcontains 'SQLiteConnection') {
             $conn.Close()
             $conn.Dispose()
             Write-Verbose "Closed connection"
@@ -158,8 +149,7 @@
         $com.Dispose()
     }
 
-    function Get-ParameterName
-    {
+    function Get-ParameterName {
         [CmdletBinding()]
         Param(
             [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -172,17 +162,19 @@
             [string]$Separator = '_'
         )
 
-        Process{
+
+        Process {
             $InputObject | ForEach-Object {
-                if($_ -match $Regex){
-                    $Groups = @($_ -split $Regex | Where-Object {$_})
-                    for($i = 0; $i -lt $Groups.Count; $i++){
-                        if($Groups[$i] -match $Regex){
-                            $Groups[$i] = ($Groups[$i].ToCharArray() | ForEach-Object {[string][int]$_}) -join $Separator
+                if ($_ -match $Regex) {
+                    $Groups = @($_ -split $Regex | Where-Object { $_ })
+                    for ($i = 0; $i -lt $Groups.Count; $i++) {
+                        if ($Groups[$i] -match $Regex) {
+                            $Groups[$i] = ($Groups[$i].ToCharArray() | ForEach-Object { [string][int]$_ }) -join $Separator
                         }
                     }
                     $Groups -join $Separator
-                } else {
+                }
+                else {
                     $_
                 }
             }
@@ -205,170 +197,164 @@
             [string]$ConflictClause = ''
         )
 
-        Begin{
-            $EscapeSingleQuote = "'","''"
+        Begin {
+            $EscapeSingleQuote = "'", "''"
             $Delimeter = ", "
             $QueryTemplate = "INSERT{0} INTO {1} ({2}) VALUES ({3})"
         }
 
-        Process{
-            $fmtConflictClause = if($ConflictClause){" OR $ConflictClause"}
+        Process {
+            $fmtConflictClause = if ($ConflictClause) { " OR $ConflictClause" }
             $fmtTable = "'{0}'" -f ($Table -replace $EscapeSingleQuote)
             $fmtColumns = ($Columns | ForEach-Object { "'{0}'" -f ($_ -replace $EscapeSingleQuote) }) -join $Delimeter
-            $fmtParameters = ($Parameters | ForEach-Object { "@$_"}) -join $Delimeter
+            $fmtParameters = ($Parameters | ForEach-Object { "@$_" }) -join $Delimeter
 
             $QueryTemplate -f $fmtConflictClause, $fmtTable, $fmtColumns, $fmtParameters
         }
     }
 
+                            
     #Connections
-        if($PSBoundParameters.Keys -notcontains "SQLiteConnection")
-        {
-            if ($DataSource -match ':MEMORY:') 
-            {
-                $Database = $DataSource
-            }
-            else 
-            {
-                $Database = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DataSource)    
-            }
-
-            $ConnectionString = "Data Source={0}" -f $Database
-            $SQLiteConnection = New-Object System.Data.SQLite.SQLiteConnection -ArgumentList $ConnectionString
-            $SQLiteConnection.ParseViaFramework = $true #Allow UNC paths, thanks to Ray Alex!
+    if ($PSBoundParameters.Keys -notcontains "SQLiteConnection") {
+        if ($DataSource -match ':MEMORY:') {
+            $Database = $DataSource
+        }
+        else {
+            $Database = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($DataSource)    
         }
 
-        Write-Debug "ConnectionString $($SQLiteConnection.ConnectionString)"
-        Try
-        {
-            if($SQLiteConnection.State -notlike "Open")
-            {
-                $SQLiteConnection.Open()
-            }
-            $Command = $SQLiteConnection.CreateCommand()
-            $CommandTimeout = $QueryTimeout
-            $Transaction = $SQLiteConnection.BeginTransaction()
+        $ConnectionString = "Data Source={0}" -f $Database
+        $SQLiteConnection = New-Object System.Data.SQLite.SQLiteConnection -ArgumentList $ConnectionString
+        $SQLiteConnection.ParseViaFramework = $true #Allow UNC paths, thanks to Ray Alex!
+    }
+
+    Write-Debug "ConnectionString $($SQLiteConnection.ConnectionString)"
+    Try {
+        if ($SQLiteConnection.State -notlike "Open") {
+            $SQLiteConnection.Open()
         }
-        Catch
-        {
-            Throw $_
-        }
-    
-    write-verbose "DATATABLE IS $($DataTable.gettype().fullname) with value $($Datatable | out-string)"
-    $RowCount = $Datatable.Rows.Count
+        $Command = $SQLiteConnection.CreateCommand()
+        $CommandTimeout = $QueryTimeout
+        $Transaction = $SQLiteConnection.BeginTransaction()
+    }
+    Catch {
+        Throw $_
+    }
+
+        
+    $RowCount = ($Datatable.Rows.RowState -ne 'Unchanged').Count
     Write-Verbose "Processing datatable with $RowCount rows"
 
-    if ($Force -or $PSCmdlet.ShouldProcess("$($DataTable.Rows.Count) rows, with BoundParameters $($PSBoundParameters | Out-String)", "SQL Bulk Copy"))
-    {
+    if ($Force -or $PSCmdlet.ShouldProcess("$RowCount rows, with BoundParameters $($PSBoundParameters | Out-String)", "SQL Bulk Copy")) {
         #Get column info...
-            [array]$Columns = $DataTable.Columns | Select-Object -ExpandProperty ColumnName
-            $ColumnTypeHash = @{}
-            $ColumnToParamHash = @{}
-            $Index = 0
-            foreach($Col in $DataTable.Columns)
-            {
-                $Type = Switch -regex ($Col.DataType.FullName)
-                {
-                    # I figure we create a hashtable, can act upon expected data when doing insert
-                    # Might be a better way to handle this...
-                    '^(|\ASystem\.)Boolean$' {"BOOLEAN"} #I know they're fake...
-                    '^(|\ASystem\.)Byte\[\]' {"BLOB"}
-                    '^(|\ASystem\.)Byte$'  {"BLOB"}
-                    '^(|\ASystem\.)Datetime$'  {"DATETIME"}
-                    '^(|\ASystem\.)Decimal$' {"REAL"}
-                    '^(|\ASystem\.)Double$' {"REAL"}
-                    '^(|\ASystem\.)Guid$' {"TEXT"}
-                    '^(|\ASystem\.)Int16$'  {"INTEGER"}
-                    '^(|\ASystem\.)Int32$'  {"INTEGER"}
-                    '^(|\ASystem\.)Int64$' {"INTEGER"}
-                    '^(|\ASystem\.)UInt16$'  {"INTEGER"}
-                    '^(|\ASystem\.)UInt32$'  {"INTEGER"}
-                    '^(|\ASystem\.)UInt64$' {"INTEGER"}
-                    '^(|\ASystem\.)Single$' {"REAL"}
-                    '^(|\ASystem\.)String$' {"TEXT"}
-                    Default {"BLOB"} #Let SQLite handle the rest...
-                }
+        [array]$Columns = $DataTable.Columns | Select-Object -ExpandProperty ColumnName
+        $ColumnTypeHash = @{}
+        $ColumnToParamHash = @{}
+        $Index = 0
 
-                #We ref columns by their index, so add that...
-                $ColumnTypeHash.Add($Index,$Type)
-
-                # Parameter names can only be alphanumeric: https://www.sqlite.org/c3ref/bind_blob.html
-                # So we have to replace all non-alphanumeric chars in column name to use it as parameter later.
-                # This builds hashtable to correlate column name with parameter name.
-                $ColumnToParamHash.Add($Col.ColumnName, (Get-ParameterName $Col.ColumnName))
-
-                $Index++
+        # Create table if it does not exist
+        $CreateTableQuery = 'CREATE TABLE IF NOT EXISTS [{0}] (' -f $Table
+        
+        foreach ($Col in $DataTable.Columns) {
+            $Type = Switch -regex ($Col.DataType.FullName) {
+                # I figure we create a hashtable, can act upon expected data when doing insert
+                # Might be a better way to handle this...
+                '^(|\ASystem\.)Boolean$' { "BOOLEAN" } #I know they're fake...
+                '^(|\ASystem\.)Byte\[\]' { "BLOB" }
+                '^(|\ASystem\.)Byte$' { "BLOB" }
+                '^(|\ASystem\.)Datetime$' { "DATETIME" }
+                '^(|\ASystem\.)Decimal$' { "REAL" }
+                '^(|\ASystem\.)Double$' { "REAL" }
+                '^(|\ASystem\.)Guid$' { "TEXT" }
+                '^(|\ASystem\.)Int16$' { "INTEGER" }
+                '^(|\ASystem\.)Int32$' { "INTEGER" }
+                '^(|\ASystem\.)Int64$' { "INTEGER" }
+                '^(|\ASystem\.)UInt16$' { "INTEGER" }
+                '^(|\ASystem\.)UInt32$' { "INTEGER" }
+                '^(|\ASystem\.)UInt64$' { "INTEGER" }
+                '^(|\ASystem\.)Single$' { "REAL" }
+                '^(|\ASystem\.)String$' { "TEXT" }
+                Default { "BLOB" } #Let SQLite handle the rest...
             }
+            $CreateTableQuery += "[{0}] {1} {2}, " -f $Col.ColumnName, $Type, $(IF ($Col.ColumnName -eq $primaryKey) { "PRIMARY KEY" })
+            
+            #We ref columns by their index, so add that...
+            $ColumnTypeHash.Add($Index, $Type)
+
+            # Parameter names can only be alphanumeric: https://www.sqlite.org/c3ref/bind_blob.html
+            # So we have to replace all non-alphanumeric chars in column name to use it as parameter later.
+            # This builds hashtable to correlate column name with parameter name.
+            $ColumnToParamHash.Add($Col.ColumnName, (Get-ParameterName $Col.ColumnName))
+
+            $Index++
+        }
+        $CreateTableQuery = $CreateTableQuery.TrimEnd(', ') + ")"
+        Write-Verbose "Create Table if not exists:`n $CreateTableQuery"
+        $Command.CommandText = $CreateTableQuery
+        $null = $Command.ExecuteNonQuery()
 
         #Build up the query
-            if ($PSBoundParameters.ContainsKey('ConflictClause'))
-            {
-                $Command.CommandText = New-SqliteBulkQuery -Table $Table -Columns $ColumnToParamHash.Keys -Parameters $ColumnToParamHash.Values -ConflictClause $ConflictClause
-            }
-            else
-            {
-                $Command.CommandText = New-SqliteBulkQuery -Table $Table -Columns $ColumnToParamHash.Keys -Parameters $ColumnToParamHash.Values
-            }
-
-            foreach ($Column in $Columns)
-            {
-                $param = New-Object System.Data.SQLite.SqLiteParameter $ColumnToParamHash[$Column]
-                [void]$Command.Parameters.Add($param)
-            }
+        if ($PSBoundParameters.ContainsKey('ConflictClause')) {
+            $Command.CommandText = New-SqliteBulkQuery -Table $Table -Columns $ColumnToParamHash.Keys -Parameters $ColumnToParamHash.Values -ConflictClause $ConflictClause
+        }
+        else {
+            $Command.CommandText = New-SqliteBulkQuery -Table $Table -Columns $ColumnToParamHash.Keys -Parameters $ColumnToParamHash.Values
+        }
+        Write-Verbose ("Insert Command:`n{0}" -f $Command.CommandText)
+        foreach ($Column in $Columns) {
+            $param = New-Object System.Data.SQLite.SqLiteParameter $ColumnToParamHash[$Column]
+            [void]$Command.Parameters.Add($param)
+        }
             
-            for ($RowNumber = 0; $RowNumber -lt $RowCount; $RowNumber++)
-            {
-                $row = $Datatable.Rows[$RowNumber]
-                for($col = 0; $col -lt $Columns.count; $col++)
-                {
-                    # Depending on the type of thid column, quote it
-                    # For dates, convert it to a string SQLite will recognize
-                    switch ($ColumnTypeHash[$col])
-                    {
-                        "BOOLEAN" {
-                            $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = [int][boolean]$row[$col]
+        # for ($RowNumber = 0; $RowNumber -lt $RowCount; $RowNumber++) 
+        # Made by Gaspaq
+        foreach ($row in $datatable.Rows | Where-Object { $_.RowState -ne 'Unchanged' }) {
+            
+            # $row = $Datatable.Rows[$RowNumber]
+            for ($col = 0; $col -lt $Columns.count; $col++) {
+                # Depending on the type of thid column, quote it
+                # For dates, convert it to a string SQLite will recognize
+                switch ($ColumnTypeHash[$col]) {
+                    "BOOLEAN" {
+                        $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = [int][boolean]$row[$col]
+                    }
+                    "DATETIME" {
+                        Try {
+                            $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = $row[$col].ToString("yyyy-MM-dd HH:mm:ss")
                         }
-                        "DATETIME" {
-                            Try
-                            {
-                                $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = $row[$col].ToString("yyyy-MM-dd HH:mm:ss")
-                            }
-                            Catch
-                            {
-                                $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = $row[$col]
-                            }
-                        }
-                        Default {
+                        Catch {
                             $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = $row[$col]
                         }
                     }
-                }
-
-                #We have the query, execute!
-                    Try
-                    {
-                        [void]$Command.ExecuteNonQuery()
+                    Default {
+                        $Command.Parameters[$ColumnToParamHash[$Columns[$col]]].Value = $row[$col]
                     }
-                    Catch
-                    {
-                        #Minimal testing for this rollback...
-                            Write-Verbose "Rolling back due to error:`n$_"
-                            $Transaction.Rollback()
+                }
+            }
+            
+            #We have the query, execute!
+            Try {
+
+
+                [void]$Command.ExecuteNonQuery()
+            }
+            Catch {
                         
-                        #Clean up and throw an error
-                            CleanUp -conn $SQLiteConnection -com $Command -BoundParams $PSBoundParameters
-                            Throw "Rolled back due to error:`n$_"
-                    }
+                #Minimal testing for this rollback...
+                Write-Verbose "Rolling back due to error:`n$_"
+                $Transaction.Rollback()
+                        
+                #Clean up and throw an error
+                CleanUp -conn $SQLiteConnection -com $Command -BoundParams $PSBoundParameters
+                Throw "Rolled back due to error:`n$_"
+                        
+            }
 
-                if($NotifyAfter -gt 0 -and $($RowNumber % $NotifyAfter) -eq 0)
-                {
-                    Write-Verbose "Processed $($RowNumber + 1) records"
-                }
-            }  
+        }
     }
     
     #Commit the transaction and clean up the connection
-        $Transaction.Commit()
-        CleanUp -conn $SQLiteConnection -com $Command -BoundParams $PSBoundParameters
+    $Transaction.Commit()
+    CleanUp -conn $SQLiteConnection -com $Command -BoundParams $PSBoundParameters
     
 }
